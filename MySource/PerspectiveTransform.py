@@ -18,12 +18,15 @@ class PerspectiveTransform:
         self.pointsPerColumn = 6
         self.cameraMatrix = None
         self.distortionCoefficients = None
+        self.warpMatrix = None
+        self.inverseWarpMatrix = None
         self.data = Data()
         self.isCalibrated = False
         self.yRegionRatio = yRegionRatio
         self.xTetragonTopWidth = xTetragonTopWidth
         self.xTetragonBottomWidthReduction   = xTetragonTopWidth
         self.Calibrate()
+
         
     def GenerateCalibrationData(self,image, pointsPerRow, pointsPerColumn):
         grayImage = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
@@ -40,6 +43,11 @@ class PerspectiveTransform:
 
 
     def Calibrate(self):
+        if self.data.cameraFileExists:
+            self.cameraMatrix, self.distortionCoefficients = self.data.LoadCameraCalibrationVariables()
+            self.isCalibrated = True
+            return self.isCalibrated
+        
         images = self.data.LoadChessBoardImages()
         pointsPerRow = self.pointsPerRow
         pointsPerColumn = self.pointsPerColumn
@@ -47,7 +55,9 @@ class PerspectiveTransform:
             print("Calibrating ...")
             grayImage= self.GenerateCalibrationData(image, pointsPerRow, pointsPerColumn)
         self.isCalibrated, self.cameraMatrix, self.distortionCoefficients, cameraRotationVector, cameraTranslationVector = cv2.calibrateCamera(self.objectPoints, self.imagePoints, grayImage.shape[::-1], None, None)    
-         
+        
+        self.data.SaveCameraCalibrationVariables(self.cameraMatrix, self.distortionCoefficients)
+        
         return self.isCalibrated
     
     
@@ -96,15 +106,10 @@ class PerspectiveTransform:
         bottom = height
         return np.float32([[(left, bottom), (left, top), (right, top), (right, bottom)]])
         
-        
-    def WarpLaneImage(self,image, printPolyLines = False):
-        if not self.isCalibrated:
-            self.Calibrate()
-
+    def DefineWarpTransformation(self, image, printPolyLines):
         undistortedImage = self.UndistortImage(image)
         imageWidth = image.shape[1]
         imageHeight = image.shape[0]
-        print ("Warping ....")
         
         destinationPoints = self.GetDestinationPoints(imageHeight, imageWidth, widthLeftCorrection=384, widthRightCorrection =896)
         sourcePoints = self.GetSourcePoints(imageHeight, imageWidth, bottomWidthLeftCorrection=384, bottomWidthRightCorrection= 896,  
@@ -114,8 +119,23 @@ class PerspectiveTransform:
             undistortedImage = cv2.polylines(undistortedImage,[sourcePoints.astype(np.int32)],True,(0,0,255), 4)
             image = cv2.polylines(image,[sourcePoints.astype(np.int32)],True,(0,0,255), 4)
         
-        warpMatrix = cv2.getPerspectiveTransform(sourcePoints, destinationPoints)
-        warpedImage = cv2.warpPerspective(undistortedImage, warpMatrix, (imageWidth, imageHeight))
+        self.warpMatrix = cv2.getPerspectiveTransform(sourcePoints, destinationPoints)
+        self.inverseWarpMatrix = cv2.getPerspectiveTransform(destinationPoints, sourcePoints)
+        self.data.SavePerspectiveTransfromVariables(self.warpMatrix, self.inverseWarpMatrix)
+    
+        
+    def WarpLaneImage(self,image, printPolyLines = False):
+        if not self.isCalibrated:
+            self.Calibrate()
+        if self.data.perspectiveTransformFileExists:
+            self.warpMatrix, self.inverseWarpMatrix = self.data.LoadPerspectiveTransfomrVariables()
+        else:
+            self.DefineWarpTransformation(image, printPolyLines)
+
+        imageWidth = image.shape[1]
+        imageHeight = image.shape[0]
+        undistortedImage = self.UndistortImage(image)
+        warpedImage = cv2.warpPerspective(undistortedImage, self.warpMatrix, (imageWidth, imageHeight))
         return warpedImage
     
     def ShowTransformResult(self, image):   

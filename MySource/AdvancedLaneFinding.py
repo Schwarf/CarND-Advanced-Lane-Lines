@@ -39,11 +39,11 @@ class LaneLineIdentification():
     
     
         
-    def Detect(self, warpedImage):
-        imageHeight = warpedImage.shape[0]
-        imageWidth = warpedImage.shape[1]
+    def Detect(self, processedImage):
+        imageHeight = processedImage.shape[0]
+        imageWidth = processedImage.shape[1]
 
-        outputImage = np.dstack((warpedImage, warpedImage, warpedImage))*255
+        outputImage = np.dstack((processedImage, processedImage, processedImage))*255
         #outputImage = np.dstack((processedImage, processedImage, processedImage))*255
         histogramMidpoint, histogram = self.CalculateHistogram(processedImage, 0, imageHeight)
             
@@ -53,7 +53,7 @@ class LaneLineIdentification():
         currentLeftPeakPosition = leftPeakPosition
         currentRightPeakPosition = rightPeakPosition
 
-        whitePixelPositions = warpedImage.nonzero()
+        whitePixelPositions = processedImage.nonzero()
         rowIndicesWithWhitePixels = np.array(whitePixelPositions[0])
         columnIndicesWithWhitePixels = np.array(whitePixelPositions[1])
 
@@ -126,9 +126,7 @@ class LaneLineIdentification():
         
     def DetectAndShow(self, image, warpedImage, processedImage):
         global original
-        if(original):
-            finalImage = self.Detect(processedImage)
-            #warpedImage = cv2.cvtColor(warpedImage, cv2.COLOR_BGR2RGB)
+        finalImage = self.Detect(processedImage)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         warpedImage = cv2.cvtColor(warpedImage, cv2.COLOR_BGR2RGB)
         
@@ -152,57 +150,34 @@ class LaneLineIdentification():
         
         
 
+def TestImagePipeline():
+    # Saving, loading data
+    data = Data()
+    testImages = data.LoadTestImages()
+    perspectiveTransform = PerspectiveTransform()
+    processing = ImageProcessing(magnitudeKernelSize=11, angleKernelSize=5)
+    laneId = LaneLineIdentification()
+    if(perspectiveTransform.isCalibrated):
+        for image in testImages:
+            warpedImage = perspectiveTransform.WarpLaneImage(image)
+            processedImage = processing.Process(warpedImage)
+            laneId.DetectAndShow(image, warpedImage,processedImage)
 
+
+def VideoPipeline():
+    
+
+
+TestImagePipeline()
+    
+
+ 
+    
 
 
 
 
     
-data = Data()
-'''
-Load the data
-'''
-chessBoardImages = data.LoadChessBoardImages()
-testImages = data.LoadTestImages()
-
-'''
-Initialize perspective transformation class 
-'''
-perspectiveTransform = PerspectiveTransform()
-
-'''
-Initialize image processing 
-'''
-
-processing = ImageProcessing(magnitudeKernelSize=11, angleKernelSize=5)
-
-
-'''
-Lane detection
-'''
-
-laneId = LaneLineIdentification()
-original = True
-if(perspectiveTransform.isCalibrated):
-    for image in testImages:
-        
-        if(original):
-            warpedImage = perspectiveTransform.WarpLaneImage(image)
-            processedImage = processing.Process(warpedImage)
-        else:
-            processedImage = processing.Process(image)
-            warpedImage = perspectiveTransform.WarpLaneImage(processedImage)
-            
-        
-        laneId.DetectAndShow(image, warpedImage,processedImage)
-        
-
-#testImages = data.LoadTestImages()
-
-#for image in testImages:
-#    Processing.ShowProcessedImage(image)
-
- 
 
     
 
