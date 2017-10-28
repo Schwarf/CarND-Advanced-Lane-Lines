@@ -33,7 +33,7 @@ class ImageProcessing:
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     def ConvertImageToHSVSpace(self, image):
-        return cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        return cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
     def ConvertHSVImageToGrayColorSpace(self, image):
         image1 = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
@@ -45,24 +45,30 @@ class ImageProcessing:
     
     def YellowHSVMask(self,image):
         hsvImage = self.ConvertImageToHSVSpace(image)
-        yellowHSVLow = np.array([ 50, 50, 50])
-        yellowHSVHigh = np.array([ 110, 255, 255])
+        yellowHSVLow = np.array([80,100,100])
+        yellowHSVHigh = np.array([110,255,255])
+        #yellowHSVLow = np.array([ 255, 255, 0])
+        #yellowHSVHigh = np.array([ 255, 255, 204])
+        #yellowPixels = cv2.inRange(image, yellowHSVLow, yellowHSVHigh)
         yellowPixels = cv2.inRange(hsvImage, yellowHSVLow, yellowHSVHigh)
-        return cv2.bitwise_and(hsvImage, yellowPixels)
+        hsvYellowImage = cv2.bitwise_and(hsvImage, hsvImage, mask=yellowPixels)
+        bgrYellowImage = cv2.cvtColor(hsvYellowImage, cv2.COLOR_HSV2BGR)
+        return bgrYellowImage
     
     def WhiteHSVMask(self,image):
-        whiteHSVLow = np.array([  0, 0, 180])
-        whiteHSVHigh = np.array([ 255, 75, 255])
+#        hsvImage = self.ConvertImageToHSVSpace(image)
+#        whiteHSVLow  = np.array([  0,   0,   200])
+#        whiteHSVHigh = np.array([ 255,  80, 255])
+        whiteHSVLow = np.array([205, 205, 205])
+        whiteHSVHigh = np.array([ 255, 255, 255])
+        #whitePixels = cv2.inRange(hsvImage, whiteHSVLow, whiteHSVHigh)
         whitePixels = cv2.inRange(image, whiteHSVLow, whiteHSVHigh)
-        return cv2.bitwise_and(image, whitePixels)
+        return  cv2.bitwise_and(image, image, mask=whitePixels)
     
-    def ApplyWhiteAnYellowColorMasks(self,image):
-        yellowMask = self.YellowHSVMask(hsvImage)
-        whiteMask = self.WhiteHSVMask(hsvImage)
-        mask = cv2.bitwise_or(yellowMask, whiteMask)
-        filtered = cv2.bitwise_and(hsvImage, hsvImage, mask=mask)
-        filtered = self.ConvertBackToBGR(filtered)
- 
+    def ApplyWhiteAndYellowColorMasks(self,image):
+        yellowMask = self.YellowHSVMask(image)
+        whiteMask = self.WhiteHSVMask(image)
+        filtered = cv2.addWeighted(whiteMask, 1., yellowMask, 1., 0.)
         return filtered
     
     def ApplyGaussianSmoothing(self, image, kernelSize =5):
@@ -121,27 +127,26 @@ class ImageProcessing:
     
     def Process(self, image):
 
-        filteredImage = self.ApplyWhiteAnYellowColorMasks(image)
+        filteredImage = self.ApplyWhiteAndYellowColorMasks(image)
+        #print(filteredImage.shape)
+        filteredImage = self.ConvertBGRImageToGrayColorSpace(filteredImage)
+        (thresh, processedImage) = cv2.threshold(filteredImage, 1, 255, cv2.THRESH_BINARY)
         
-        grayImage = self.ConvertHSVImageToGrayColorSpace(filteredImage)
         #print(grayImage)
         #smoothedImage = self.ApplyGaussianSmoothing(grayImage)
 #        edgeImage = self.ApplyCannyEdgeDetection(smoothedImage)
-        
-
-        magnitudeImage = self.MagnitudeGradient(grayImage)
-        angleImage = self.AngleGradient(grayImage)
-
-        #magnitudeImage = self.MagnitudeGradient(smoothedImage)
+        #magnitudeImage = self.MagnitudeGradient(filteredImage)
+        #angleImage = self.AngleGradient(filteredImage)
+        #magnitudeImage = self.MagnitudeGradient(grayImage)
         #angleImage = self.AngleGradient(smoothedImage)
-        xGradientImage, yGradientImage =  self.XAndYGradients(grayImage)
+#        xGradientImage, yGradientImage =  self.XAndYGradients(grayImage)
         #magnitudeImage = self.ApplyCorrection(magnitudeImage)
         #angleImage = self.ApplyCorrection(angleImage)
-        processedImage = np.zeros_like(grayImage)
-        #processedImage[((magnitudeImage ==1) & (grayImage ==1))] =1 
+        #processedImage = np.zeros_like(image)
+        #processedImage[( (grayImage ==1))] =1 
         #processedImage[((magnitudeImage ==1) | (angleImage ==1))] =1
         #processedImage = self.DefineTetragonROIAndApplyToImage(processedImage, 0.4)
-        return grayImage
+        return processedImage
 
  
  
