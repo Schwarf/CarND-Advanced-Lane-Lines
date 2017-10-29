@@ -59,7 +59,7 @@ class ImageProcessing:
 #        hsvImage = self.ConvertImageToHSVSpace(image)
 #        whiteHSVLow  = np.array([  0,   0,   200])
 #        whiteHSVHigh = np.array([ 255,  80, 255])
-        whiteHSVLow = np.array([205, 205, 205])
+        whiteHSVLow = np.array([180, 180, 180])
         whiteHSVHigh = np.array([ 255, 255, 255])
         #whitePixels = cv2.inRange(hsvImage, whiteHSVLow, whiteHSVHigh)
         whitePixels = cv2.inRange(image, whiteHSVLow, whiteHSVHigh)
@@ -126,7 +126,7 @@ class ImageProcessing:
     
     
     def Process(self, image):
-
+        
         filteredImage = self.ApplyWhiteAndYellowColorMasks(image)
         
         #print(filteredImage.shape)

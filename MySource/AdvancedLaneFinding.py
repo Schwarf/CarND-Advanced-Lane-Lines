@@ -13,11 +13,12 @@ import math
 from ImageProcessing import ImageProcessing
 from DataHandling import Data
 from PerspectiveTransform import  PerspectiveTransform
- 
+from collections import deque
+
+BigCounter = 0
 
 
-
-
+ShowIt = False
 
 
 
@@ -32,10 +33,9 @@ class LaneLineIdentification():
         self.columnIndicesWithWhitePixels = None
         self.leftLaneFit = None
         self.rightLaneFit = None
-        self.backupLeftXValues = None
-        self.backupLeftYValues = None
-        self.backupRightXValues = None
-        self.backupRightYValues = None
+        self.averagedLeftLaneList = deque()
+        self.averagedRightLaneList = deque()
+        
     
     def CalculateHistogram(self,image, yStartValue, yEndValue):
         histogram = np.sum(image[yStartValue:yEndValue], axis=0)
@@ -50,16 +50,41 @@ class LaneLineIdentification():
 
     
     def UpdateQuadraticFit(self, xValue, yValue):
+        global BigCounter
+        BigCounter +=1
         return np.polyfit(yValue, xValue, 2)
     
     
-    def GetLeftLaneFitForYValues(self, yValues):
-        return self.leftLaneFit[0]*yValues**2 + self.leftLaneFit[1]*yValues + self.leftLaneFit[2]
+    def GetLaneForYValues(self, fit, yValues, valid, average, nextFrameFit =False):
+        if nextFrameFit:
+            return  fit[0]*yValues**2 + fit[1]*yValues + fit[2], None
+        
+        count = len(average)
+        if(valid):
+            result = fit[0]*yValues**2 + fit[1]*yValues + fit[2]
+            if(count > 0):
+                averageValue = sum(average)/float(count)
+                meanSquareDeviation = np.mean(np.divide( (result -averageValue)**2,averageValue**2))
+                if(meanSquareDeviation < 0.072):
+                    average.append(result)
+                else:
+                    print('ALERT ALERT')
+                    result = averageValue
+            else:
+                average.append(result)
+        
+        
+        else:        
+            result = sum(average)/float(count)
+        if(count > 15):
+            average.popleft()
 
-    def GetRightLaneFitForYValues(self, yValues):
-        return self.rightLaneFit[0]*yValues**2 + self.rightLaneFit[1]*yValues + self.rightLaneFit[2]
+        return result, average
+    
+    
 
-
+        
+        
         
     def DetectLanes(self, processedImage):
         if self.areLanesDetected:
@@ -123,61 +148,54 @@ class LaneLineIdentification():
         isRightValid, rightXValues, rightYValues =  self.CalculateXYValues( rightLaneIndices)
 
         
+        
+        if isLeftValid :
+            self.leftLaneFit =  self.UpdateQuadraticFit(leftXValues, leftYValues)  
+        if isRightValid:
+            self.rightLaneFit = self.UpdateQuadraticFit(rightXValues, rightYValues)  
+        
         if isLeftValid and isRightValid:
             self.areLanesDetected = True
-            self.backupLeftXValues = leftXValues
-            self.backupLeftYValues = leftYValues
-            self.backupRightXValues = rightXValues
-            self.backupRightYValues = rightYValues
-            self.rightLaneFit = self.UpdateQuadraticFit(rightXValues, rightYValues)  #np.polyfit(rightYValue, rightXValue, 2)
-            self.leftLaneFit =  self.UpdateQuadraticFit(leftXValues, leftYValues)  #np.polyfit(leftYValue, leftXValue, 2)
-        elif not isLeftValid and not isRightValid:
-            self.areLanesDetected = False
-            #outputImage = self.DetectLanes(processedImage)
-        elif not isLeftValid and isRightValid:
-            self.areLanesDetected = False
-            self.rightLaneFit = self.UpdateQuadraticFit(rightXValues, rightYValues)  #np.polyfit(rightYValue, rightXValue, 2)
-        elif isLeftValid and not isRightValid:
-            self.areLanesDetected = False
-            self.leftLaneFit =  self.UpdateQuadraticFit(leftXValues, leftYValues)  #np.polyfit(leftYValue, leftXValue, 2)
-
-
-#            self.leftLaneFit =  self.UpdateQuadraticFit(leftXValues, leftYValues)  #np.polyfit(leftYValue, leftXValue, 2)
-#            self.rightLaneFit = self.UpdateQuadraticFit(rightXValues, rightYValues)  #np.polyfit(rightYValue, rightXValue, 2)
-#            self.areLanesDetected = True
         
-        outputImage = self.VisualizeLane(processedImage)
+#        if not self.areLanesDetected:
+#            print(len(self.averagedRightLaneList) , len(self.averagedLeftLaneList), isRightValid )
+#            outputImage = self.Visualize(outputImage, leftLaneIndices, rightLaneIndices, isLeftValid, isRightValid)
+        outputImage = self.VisualizeLane(processedImage, isLeftValid, isRightValid)
         return outputImage
         
-    def Visualize(self,outputImage, leftLaneIndices, rightLaneIndices):
+    def Visualize(self,outputImage, leftLaneIndices, rightLaneIndices, isLeftValid, isRightValid):
         imageHeight = outputImage.shape[0]
         
-        plotY = np.linspace(0 , imageHeight-1, imageHeight)
-        leftLaneFitX = self.GetLeftLaneFitForYValues(plotY)
-        rightLaneFitX = self.GetRightLaneFitForYValues(plotY)
+        yValues = np.linspace(0 , imageHeight-1, imageHeight)
+        leftLaneFitX, self.averagedLeftLaneList = self.GetLaneForYValues(self.leftLaneFit, yValues, isLeftValid, self.averagedLeftLaneList)
+        rightLaneFitX, self.averageRightLaneList = self.GetLaneForYValues(self.rightLaneFit, yValues, isRightValid, self.averagedRightLaneList)
+        leftPoints = np.array([np.transpose(np.vstack([leftLaneFitX, yValues]))])
+        rightPoints = np.array([np.flipud(np.transpose(np.vstack([rightLaneFitX, yValues])))])
+        allPoints = np.hstack((leftPoints, rightPoints))
+        cv2.fillPoly(outputImage, np.int_([allPoints]), (0,255, 0))
         outputImage[self.rowIndicesWithWhitePixels[leftLaneIndices], self.columnIndicesWithWhitePixels[leftLaneIndices]] = [255,0,0]
         outputImage[self.rowIndicesWithWhitePixels[rightLaneIndices], self.columnIndicesWithWhitePixels[rightLaneIndices]] = [0,0,255]
         
         plt.imshow(outputImage)
-        plt.plot(leftLaneFitX, plotY, color='yellow')
-        plt.plot(rightLaneFitX, plotY, color='yellow')
+        plt.plot(leftLaneFitX, yValues, color='yellow')
+        plt.plot(rightLaneFitX, yValues, color='yellow')
         plt.xlim(0, 1280)
         plt.ylim(720, 0)
         plt.show()
         return outputImage
     
     
-    def VisualizeLane(self, processedImage):
+    def VisualizeLane(self, processedImage, isLeftValid, isRightValid):
         imageHeight = processedImage.shape[0]
         imageWidth = processedImage.shape[1]
         outputImage = np.dstack((processedImage, processedImage, processedImage))*255
 
-        plotY = np.linspace(0 , imageHeight-1, imageHeight)
-        leftLaneFitX = self.GetLeftLaneFitForYValues(plotY)
-        rightLaneFitX = self.GetRightLaneFitForYValues(plotY)
-        
-        leftPoints = np.array([np.transpose(np.vstack([leftLaneFitX, plotY]))])
-        rightPoints = np.array([np.flipud(np.transpose(np.vstack([rightLaneFitX, plotY])))])
+        yValues = np.linspace(0 , imageHeight-1, imageHeight)
+        leftLaneFitX, self.averagedLeftLaneList = self.GetLaneForYValues(self.leftLaneFit, yValues, isLeftValid, self.averagedLeftLaneList)
+        rightLaneFitX, self.averagedRightLaneList = self.GetLaneForYValues(self.rightLaneFit, yValues, isRightValid, self.averagedRightLaneList)
+            
+        leftPoints = np.array([np.transpose(np.vstack([leftLaneFitX, yValues]))])
+        rightPoints = np.array([np.flipud(np.transpose(np.vstack([rightLaneFitX, yValues])))])
         allPoints = np.hstack((leftPoints, rightPoints))
         
         cv2.fillPoly(outputImage, np.int_([allPoints]), (0,255, 0))
@@ -195,35 +213,28 @@ class LaneLineIdentification():
     
     def IterateFromDetectedLanes(self, processedImage):
         self.FindWhitePixels(processedImage)
-       
-        leftLaneCondition = self.GetLeftLaneFitForYValues(self.rowIndicesWithWhitePixels)  
-        rightLaneCondition = self.GetRightLaneFitForYValues(self.rowIndicesWithWhitePixels)
-
+        #outputImage = np.dstack((processedImage, processedImage, processedImage))*255
+        leftLaneCondition, _ = self.GetLaneForYValues(self.leftLaneFit, self.rowIndicesWithWhitePixels, True, deque(), nextFrameFit=True) 
+        rightLaneCondition, _ = self.GetLaneForYValues(self.rightLaneFit, self.rowIndicesWithWhitePixels, True, deque(), nextFrameFit=True)
+        
         leftLaneIndices = ((self.columnIndicesWithWhitePixels > (leftLaneCondition- self.windowWidth)) & (self.columnIndicesWithWhitePixels < (leftLaneCondition + self.windowWidth)))
         rightLaneIndices = ((self.columnIndicesWithWhitePixels > (rightLaneCondition- self.windowWidth)) & (self.columnIndicesWithWhitePixels < (rightLaneCondition + self.windowWidth)))
 
         isLeftValid, leftXValues, leftYValues =  self.CalculateXYValues(leftLaneIndices)
         isRightValid, rightXValues, rightYValues =  self.CalculateXYValues( rightLaneIndices)
         
+        
+        self.areLanesDetected =False
+        if isLeftValid :
+            self.leftLaneFit =  self.UpdateQuadraticFit(leftXValues, leftYValues)  
+        if isRightValid:
+            self.rightLaneFit = self.UpdateQuadraticFit(rightXValues, rightYValues)  
+        
         if isLeftValid and isRightValid:
             self.areLanesDetected = True
-            self.backupLeftXValues = leftXValues
-            self.backupLeftYValues = leftYValues
-            self.backupRightXValues = rightXValues
-            self.backupRightYValues = rightYValues
-            self.rightLaneFit = self.UpdateQuadraticFit(rightXValues, rightYValues)  #np.polyfit(rightYValue, rightXValue, 2)
-            self.leftLaneFit =  self.UpdateQuadraticFit(leftXValues, leftYValues)  #np.polyfit(leftYValue, leftXValue, 2)
-        elif not isLeftValid and not isRightValid:
-            self.areLanesDetected = False
-            outputImage = self.DetectLanes(processedImage)
-            self.areLanesDetected = False
-        elif not isLeftValid and isRightValid:
-            self.rightLaneFit = self.UpdateQuadraticFit(rightXValues, rightYValues)  #np.polyfit(rightYValue, rightXValue, 2)
-        elif isLeftValid and not isRightValid:
-            self.areLanesDetected = False
-            self.leftLaneFit =  self.UpdateQuadraticFit(leftXValues, leftYValues)  #np.polyfit(leftYValue, leftXValue, 2)
-        
-        outputImage = self.VisualizeLane(processedImage)
+
+        #outputImage = self.Visualize(outputImage, leftLaneIndices, rightLaneIndices, isLeftValid, isRightValid)        
+        outputImage = self.VisualizeLane(processedImage, isLeftValid, isRightValid)
         
         
         return outputImage
@@ -264,6 +275,7 @@ def VideoImageProcessing(image):
     laneImage = laneId.DetectLanes(processedImage )
     unwarpedLaneImage = perspectiveTransform.InverseWarpLaneImage(laneImage)
     #unwarpedLaneImage = perspectiveTransform.InverseWarpLaneImage(laneImage)
+    #return image
     return cv2.cvtColor(cv2.addWeighted(image, 1.0, unwarpedLaneImage, 0.3, 0), cv2.COLOR_BGR2RGB) 
      
     
@@ -306,9 +318,10 @@ processing = ImageProcessing(magnitudeKernelSize=11, angleKernelSize=5)
 perspectiveTransform = PerspectiveTransform()
 laneId = LaneLineIdentification()
 
-VideoPipeline('hardchallenge')   
-#VideoPipeline('project')
- 
+VideoPipeline('project')   
+#VideoPipeline('challenge')
+#VideoPipeline('hardchallenge')
+print("BigCounter = ", BigCounter) 
     
 
 
