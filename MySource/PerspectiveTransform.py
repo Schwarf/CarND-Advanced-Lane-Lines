@@ -138,6 +138,12 @@ class PerspectiveTransform:
         warpedImage = cv2.warpPerspective(undistortedImage, self.warpMatrix, (imageWidth, imageHeight))
         return warpedImage
     
+    def InverseWarpLaneImage(self, image):
+        imageWidth = image.shape[1]
+        imageHeight = image.shape[0]
+        inverseWarpedImage = cv2.warpPerspective(image, self.inverseWarpMatrix, (imageWidth, imageHeight))
+        return inverseWarpedImage
+    
     def ShowTransformResult(self, image):   
         #calibratedImage = self.WarpChessBoardImage(image) 
         

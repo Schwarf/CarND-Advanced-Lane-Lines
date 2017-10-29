@@ -128,6 +128,7 @@ class ImageProcessing:
     def Process(self, image):
 
         filteredImage = self.ApplyWhiteAndYellowColorMasks(image)
+        
         #print(filteredImage.shape)
         filteredImage = self.ConvertBGRImageToGrayColorSpace(filteredImage)
         (thresh, processedImage) = cv2.threshold(filteredImage, 1, 255, cv2.THRESH_BINARY)
@@ -149,7 +150,7 @@ class ImageProcessing:
         return processedImage
 
  
- 
+    
 
     
     def ShowProcessedImage(self, image):
