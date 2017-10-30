@@ -150,7 +150,20 @@ class ImageProcessing:
         return processedImage
 
  
-    
+    def ShowGradientThresholding(self):
+        grayImage = self.ConvertBGRImageToGrayColorSpace(filteredImage)
+        angleImage = self.AngleGradient(grayImage)
+        magnitudeImage = self.MagnitudeGradient(grayImage)
+        processedImage[((magnitudeImage ==1) | (angleImage ==1))] =1
+        (thresh, processedImage) = cv2.threshold(processedImage, 1, 255, cv2.THRESH_BINARY)
+        #xGradientImage, yGradientImage =  self.XAndYGradients(grayImage)
+        f, (p1, p2) = plt.subplots(1, 2, figsize=(12, 9))
+        p1.imshow(image)
+        p1.set_title('Original image', fontsize=20)
+        p2.imshow(processedImage)
+        p2.set_title('Apply thresholding for angle gradient and magnitude gradient', fontsize=20)
+        plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
+        plt.show()
 
     
     def ShowProcessedImage(self, image):

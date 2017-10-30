@@ -12,7 +12,7 @@ import math
 
 from ImageProcessing import ImageProcessing
 from DataHandling import Data
-from PerspectiveTransform import  PerspectiveTransform
+from ImageTransform import  ImageTransform
 from collections import deque
 
 BigCounter = 0
@@ -64,11 +64,11 @@ class LaneLineIdentification():
             result = fit[0]*yValues**2 + fit[1]*yValues + fit[2]
             if(count > 0):
                 averageValue = sum(average)/float(count)
-                meanSquareDeviation = np.mean(np.divide( (result -averageValue)**2,averageValue**2))
-                if(meanSquareDeviation < 0.072):
+                print (np.divide( (result -averageValue)**2,averageValue**2))
+                normalizedMeanSquareDeviation = np.mean(np.divide( (result -averageValue)**2,averageValue**2))
+                if(normalizedMeanSquareDeviation < 0.072):
                     average.append(result)
                 else:
-                    print('ALERT ALERT')
                     result = averageValue
             else:
                 average.append(result)
@@ -269,12 +269,12 @@ def VideoImageProcessing(image):
     """
     Init
     """
-    warpedImage = perspectiveTransform.WarpLaneImage(image)
+    warpedImage = imageTransform.WarpLaneImage(image)
     processedImage = processing.Process(warpedImage)
     #laneImage = laneId.DetectAndShow(image, warpedImage, processedImage )
     laneImage = laneId.DetectLanes(processedImage )
-    unwarpedLaneImage = perspectiveTransform.InverseWarpLaneImage(laneImage)
-    #unwarpedLaneImage = perspectiveTransform.InverseWarpLaneImage(laneImage)
+    unwarpedLaneImage = imageTransform.InverseWarpLaneImage(laneImage)
+    #unwarpedLaneImage = imageTransform.InverseWarpLaneImage(laneImage)
     #return image
     return cv2.cvtColor(cv2.addWeighted(image, 1.0, unwarpedLaneImage, 0.3, 0), cv2.COLOR_BGR2RGB) 
      
@@ -285,13 +285,13 @@ def TestImagePipeline():
     # Saving, loading data
     data = Data()
     testImages = data.LoadTestImages()
-    perspectiveTransform = PerspectiveTransform()
+    imageTransform = ImageTransform()
     processing = ImageProcessing(magnitudeKernelSize=11, angleKernelSize=5)
     laneId = LaneLineIdentification()
-    if(perspectiveTransform.isCalibrated):
+    if(imageTransform.isCalibrated):
         for image in testImages:
             laneId.areLanesDetected = False
-            warpedImage = perspectiveTransform.WarpLaneImage(image)
+            warpedImage = imageTransform.WarpLaneImage(image)
             processedImage = processing.Process(warpedImage)
             laneId.DetectAndShow(image, warpedImage,processedImage)
 
@@ -314,8 +314,8 @@ def VideoPipeline(video):
 
 
 #TestImagePipeline()
-processing = ImageProcessing(magnitudeKernelSize=11, angleKernelSize=5)
-perspectiveTransform = PerspectiveTransform()
+processing = ImageProcessing()
+imageTransform = ImageTransform()
 laneId = LaneLineIdentification()
 
 VideoPipeline('project')   
