@@ -23,7 +23,7 @@ ShowIt = False
 
 
 class LaneLineIdentification():
-    def __init__(self, imageAreaFactor = 0.99, numberOfSlidingWindows = 9, windowWidth =100):
+    def __init__(self, imageAreaFactor = 0.99, numberOfSlidingWindows = 9, windowWidth =100, video='project'):
         self.imageAreaFactor = imageAreaFactor 
         self.numberOfSlidingWindows = numberOfSlidingWindows
         self.areLanesDetected = False
@@ -35,8 +35,13 @@ class LaneLineIdentification():
         self.rightLaneFit = None
         self.averagedLeftLaneList = deque()
         self.averagedRightLaneList = deque()
-        
-    
+        self.leftLaneCurvature = None
+        self.rightLaneCurvature = None
+        self.relativeCarPosition = None
+        if(video == 'project'):
+            self.normalizedMeanDeviationThreshold = 0.5
+        else:
+            self.normalizedMeanDeviationThreshold = 0.08
     def CalculateHistogram(self,image, yStartValue, yEndValue):
         histogram = np.sum(image[yStartValue:yEndValue], axis=0)
         histogramMidpoint = np.int(histogram.shape[0]/2)
@@ -64,11 +69,12 @@ class LaneLineIdentification():
             result = fit[0]*yValues**2 + fit[1]*yValues + fit[2]
             if(count > 0):
                 averageValue = sum(average)/float(count)
-                print (np.divide( (result -averageValue)**2,averageValue**2))
-                normalizedMeanSquareDeviation = np.mean(np.divide( (result -averageValue)**2,averageValue**2))
-                if(normalizedMeanSquareDeviation < 0.072):
+                
+                normalizedMeanSquareDeviation = np.sqrt(np.mean(np.divide( (result -averageValue)**2,averageValue**2)))
+                if(normalizedMeanSquareDeviation < self.normalizedMeanDeviationThreshold):
                     average.append(result)
                 else:
+                    print('ALERT ALERT')
                     result = averageValue
             else:
                 average.append(result)
@@ -193,13 +199,45 @@ class LaneLineIdentification():
         yValues = np.linspace(0 , imageHeight-1, imageHeight)
         leftLaneFitX, self.averagedLeftLaneList = self.GetLaneForYValues(self.leftLaneFit, yValues, isLeftValid, self.averagedLeftLaneList)
         rightLaneFitX, self.averagedRightLaneList = self.GetLaneForYValues(self.rightLaneFit, yValues, isRightValid, self.averagedRightLaneList)
-            
+        
+        self.CurvatureDetermination(yValues, leftLaneFitX, rightLaneFitX)
+        self.CalculateRelativeCarPosition(imageWidth, leftLaneFitX, rightLaneFitX)
+        
         leftPoints = np.array([np.transpose(np.vstack([leftLaneFitX, yValues]))])
         rightPoints = np.array([np.flipud(np.transpose(np.vstack([rightLaneFitX, yValues])))])
         allPoints = np.hstack((leftPoints, rightPoints))
         
         cv2.fillPoly(outputImage, np.int_([allPoints]), (0,255, 0))
         return outputImage
+    
+
+
+    def CalculateRelativeCarPosition(self, imageWidth, leftLaneFitX, rightLaneFitX):
+        xMeterPerPixel = 3.7/700.
+        imageHorizontalCenter = np.int(imageWidth/2)
+        laneHorizontalCenter = (rightLaneFitX[-1] - leftLaneFitX[-1]) / 2.0 + leftLaneFitX[-1]
+        self.relativeCarPosition = (imageHorizontalCenter - laneHorizontalCenter) * xMeterPerPixel
+
+    
+    def CurvatureDetermination(self, yValues, leftLaneFitX, rightLaneFitX):
+        yMeterPerPixel = 30./720.
+        xMeterPerPixel = 3.7/700.
+
+        worldCoordinateLeftX = xMeterPerPixel*leftLaneFitX
+        worldCoordinateLeftY = yMeterPerPixel*yValues
+        worldCoordinateRightX = xMeterPerPixel*rightLaneFitX
+        worldCoordinateRightY = worldCoordinateLeftY 
+
+        leftLaneFitInWorldCoordinates = self.UpdateQuadraticFit(worldCoordinateLeftX, worldCoordinateLeftY)  
+        rightLaneFitInWorldCoordinates = self.UpdateQuadraticFit(worldCoordinateRightX, worldCoordinateRightY)
+        maxYValue =np.max(yValues)*yMeterPerPixel
+        self.leftLaneCurvature = ((1 + (2*leftLaneFitInWorldCoordinates[0]*maxYValue + leftLaneFitInWorldCoordinates[1])**2)**1.5) / np.absolute(2*leftLaneFitInWorldCoordinates[0])
+        self.rightLaneCurvature = ((1 + (2*rightLaneFitInWorldCoordinates[0]*maxYValue + rightLaneFitInWorldCoordinates[1])**2)**1.5) / np.absolute(2*rightLaneFitInWorldCoordinates[0])
+        # in kilometers
+        self.leftLaneCurvature /=1000.0
+        self.rightLaneCurvature /=1000.0
+         
+    
     
     def CalculateXYValues(self, indices):
         isValid = True
@@ -240,29 +278,40 @@ class LaneLineIdentification():
         return outputImage
 
         
-    def DetectAndShow(self, image, warpedImage, processedImage):
+        
+
+        
+            
+    def DetectAndShow(self, image, warpedImage, processedImage, imageTransform):
         global original
-        finalImage = self.DetectLanes(processedImage)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        laneImage = self.DetectLanes(processedImage)
+        
         warpedImage = cv2.cvtColor(warpedImage, cv2.COLOR_BGR2RGB)
+        unwarpedLaneImage = imageTransform.InverseWarpLaneImage(laneImage)
         
-        #processedImage = cv2.cvtColor(processedImage, cv2.COLOR_BGR2RGB)
-        
-        histogramMidpoint, histogram = self.CalculateHistogram(processedImage, 0, processedImage.shape[0])
-        #
-        f, plots = plt.subplots(2, 2, figsize=(12, 9))
+        finalImage = cv2.cvtColor(cv2.addWeighted(image, 1.0, unwarpedLaneImage, 0.3, 0), cv2.COLOR_BGR2RGB)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        #histogramMidpoint, histogram = self.CalculateHistogram(processedImage, 0, processedImage.shape[0])
+
+        f, plots = plt.subplots(3, 2, figsize=(12, 15))
         plots[0,0].imshow(image)
         plots[0,0].set_title('Original ', fontsize=20)
         plots[0,1].imshow(warpedImage)
-        plots[0,1].set_title('Warped ', fontsize=20)
-        plots[1,0].imshow(processedImage)
-        plots[1,0].set_title('Warped and processed ', fontsize=20)
-        #plots[1,1].plot(histogram)
-        plots[1,1].imshow(finalImage)
-        plots[1,1].set_title('Histogram', fontsize=20)
+        plots[0,1].set_title('Image warped ', fontsize=20)
+        plots[1,0].imshow(processedImage, cmap='gray')
+        plots[1,0].set_title('Image warped and processed ', fontsize=20)
+        plots[1,1].imshow(laneImage)
+        plots[1,1].set_title('Identified lane', fontsize=20)
+        plots[2,0].imshow(unwarpedLaneImage)
+        plots[2,0].set_title('Unwarped identified lane', fontsize=20)
+        plots[2,1].imshow(finalImage)
+        plots[2,1].set_title('Original image with identified lane', fontsize=20)
+        
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
         plt.show()
+        self.areLanesDetected = False
         return processedImage
+
 
 
 def VideoImageProcessing(image):
@@ -274,9 +323,13 @@ def VideoImageProcessing(image):
     #laneImage = laneId.DetectAndShow(image, warpedImage, processedImage )
     laneImage = laneId.DetectLanes(processedImage )
     unwarpedLaneImage = imageTransform.InverseWarpLaneImage(laneImage)
+    overlayImage = cv2.cvtColor(cv2.addWeighted(image, 1.0, unwarpedLaneImage, 0.3, 0), cv2.COLOR_BGR2RGB)
+    cv2.putText(overlayImage, "Left lane curvature radius: {0:.2f} km ".format( laneId.leftLaneCurvature), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 3)
+    cv2.putText(overlayImage, "Right lane curvature radius: {0:.2f} km ".format( laneId.rightLaneCurvature), (50,100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 3)
+    cv2.putText(overlayImage, "Relative car position: {0:.2f} m ".format( laneId.relativeCarPosition), (50,150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 3)
     #unwarpedLaneImage = imageTransform.InverseWarpLaneImage(laneImage)
     #return image
-    return cv2.cvtColor(cv2.addWeighted(image, 1.0, unwarpedLaneImage, 0.3, 0), cv2.COLOR_BGR2RGB) 
+    return  overlayImage
      
     
         
@@ -313,15 +366,16 @@ def VideoPipeline(video):
     output.write_videofile(outputFile, audio=False)
 
 
-#TestImagePipeline()
+#video = 'project'
+video = 'challenge'
+
 processing = ImageProcessing()
 imageTransform = ImageTransform()
-laneId = LaneLineIdentification()
+laneId = LaneLineIdentification(video=video)
 
-VideoPipeline('project')   
-#VideoPipeline('challenge')
-#VideoPipeline('hardchallenge')
-print("BigCounter = ", BigCounter) 
+
+VideoPipeline(video)
+
     
 
 
