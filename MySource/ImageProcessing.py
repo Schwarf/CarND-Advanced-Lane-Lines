@@ -32,7 +32,7 @@ class ImageProcessing:
     def ConvertBGRImageToGrayColorSpace(self,image):
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    def ConvertImageToHSVSpace(self, image):
+    def ConvertRGBToHSV(self, image):
         return cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
     def ConvertHSVImageToGrayColorSpace(self, image):
@@ -40,34 +40,82 @@ class ImageProcessing:
         return self.ConvertBGRImageToGrayColorSpace(image1)
 
     
-    def ConvertBackToBGR(self,image):
+    def ConvertHSVToBGR(self,image):
         return cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+
+    def ConvertBGRToLAB(self,image):
+        return cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+
+    def ConvertLABToBGR(self,image):
+        return cv2.cvtColor(image, cv2.COLOR_LAB2BGR)
+
+    def ConvertBGRToLUV(self,image):
+        return cv2.cvtColor(image, cv2.COLOR_BGR2LUV)
+
+    def ConvertLUVToBGR(self,image):
+        return cv2.cvtColor(image, cv2.COLOR_LUV2BGR)
+    
+    def YellowLABMask(self,image):
+        labImage = self.ConvertBGRToLAB(image)
+        yellowLABLow = np.array([0,0,155])
+        yellowLABHigh = np.array([255,255,200])
+        yellowPixels = cv2.inRange(labImage, yellowLABLow, yellowLABHigh)
+        labYellowImage = cv2.bitwise_and(labImage, labImage, mask=yellowPixels)
+        bgrYellowImage = cv2.cvtColor(labYellowImage, cv2.COLOR_LAB2BGR)
+        return bgrYellowImage
+
+    def YellowLUVMask(self,image):
+        luvImage = self.ConvertBGRToLUV(image)
+        yellowLUVLow = np.array([0,0,155])
+        yellowLUVHigh = np.array([255,255,200])
+        yellowPixels = cv2.inRange(luvImage, yellowLUVLow, yellowLUVHigh)
+        luvYellowImage = cv2.bitwise_and(luvImage, LUVImage, mask=yellowPixels)
+        bgrYellowImage = cv2.cvtColor(LUVYellowImage, cv2.COLOR_LUV2BGR)
+        return bgrYellowImage
+
     
     def YellowHSVMask(self,image):
-        hsvImage = self.ConvertImageToHSVSpace(image)
-        yellowHSVLow = np.array([80,100,100])
+        hsvImage = self.ConvertRGBToHSV(image)
+        yellowHSVLow = np.array([0,100,100])
         yellowHSVHigh = np.array([110,255,255])
-        #yellowHSVLow = np.array([ 255, 255, 0])
-        #yellowHSVHigh = np.array([ 255, 255, 204])
-        #yellowPixels = cv2.inRange(image, yellowHSVLow, yellowHSVHigh)
+        
         yellowPixels = cv2.inRange(hsvImage, yellowHSVLow, yellowHSVHigh)
         hsvYellowImage = cv2.bitwise_and(hsvImage, hsvImage, mask=yellowPixels)
         bgrYellowImage = cv2.cvtColor(hsvYellowImage, cv2.COLOR_HSV2BGR)
         return bgrYellowImage
     
-    def WhiteHSVMask(self,image):
-#        hsvImage = self.ConvertImageToHSVSpace(image)
-#        whiteHSVLow  = np.array([  0,   0,   200])
-#        whiteHSVHigh = np.array([ 255,  80, 255])
+    def WhiteBGRMask(self,image):
         whiteHSVLow = np.array([180, 180, 180])
         whiteHSVHigh = np.array([ 255, 255, 255])
-        #whitePixels = cv2.inRange(hsvImage, whiteHSVLow, whiteHSVHigh)
         whitePixels = cv2.inRange(image, whiteHSVLow, whiteHSVHigh)
         return  cv2.bitwise_and(image, image, mask=whitePixels)
+
+
+    def ApplyColorThresholds(self, image):
+        firstLUVChannel =cv2.cvtColor(image, cv2.COLOR_BGR2LUV)[:,:,0]
+        lowerLThreshold = 225
+        upperLThreshold = 255
+        lChannelBinary = np.zeros_like(firstLUVChannel)
+        lChannelBinary[(firstLUVChannel >= lowerLThreshold) & (firstLUVChannel <= upperLThreshold)] = 1
+        
+        lastLABChannel =cv2.cvtColor(image, cv2.COLOR_BGR2Lab)[:,:,2]
+        lowerBThreshold = 155
+        upperBThreshold = 200
+        bChannelBinary = np.zeros_like(lastLABChannel)
+        bChannelBinary[(lastLABChannel >= lowerBThreshold) & (lastLABChannel <= upperBThreshold)] = 1
+    
+        combinedThresholds = np.zeros_like(lastLABChannel)
+        combinedThresholds[(bChannelBinary == 1) | (lChannelBinary == 1)] = 1
+        
+        
+        return combinedThresholds
+        
+        
     
     def ApplyWhiteAndYellowColorMasks(self,image):
         yellowMask = self.YellowHSVMask(image)
-        whiteMask = self.WhiteHSVMask(image)
+        #yellowMask = self.YellowLABMask(image)
+        whiteMask = self.WhiteBGRMask(image)
         filtered = cv2.addWeighted(whiteMask, 1., yellowMask, 1., 0.)
         return filtered
     
@@ -127,11 +175,13 @@ class ImageProcessing:
     
     def Process(self, image):
         
-        filteredImage = self.ApplyWhiteAndYellowColorMasks(image)
-        
+        #filteredImage = self.ApplyWhiteAndYellowColorMasks(image)
+        #processedImage = self.ConvertBGRImageToGrayColorSpace(filteredImage)
+        #(thresh, processedImage) = cv2.threshold(processedImage, 1, 255, cv2.THRESH_BINARY)
+        processedImage = self.ApplyColorThresholds(image)
         #print(filteredImage.shape)
-        filteredImage = self.ConvertBGRImageToGrayColorSpace(filteredImage)
-        (thresh, processedImage) = cv2.threshold(filteredImage, 1, 255, cv2.THRESH_BINARY)
+        
+        #
         
         #print(grayImage)
         #smoothedImage = self.ApplyGaussianSmoothing(grayImage)
@@ -147,6 +197,7 @@ class ImageProcessing:
         #processedImage[( (grayImage ==1))] =1 
         #processedImage[((magnitudeImage ==1) | (angleImage ==1))] =1
         #processedImage = self.DefineTetragonROIAndApplyToImage(processedImage, 0.4)
+        
         return processedImage
 
  
@@ -177,6 +228,6 @@ class ImageProcessing:
         ax1.imshow(image)
         ax1.set_title('Original Image', fontsize=20)
         ax2.imshow(processedImage, cmap='gray')
-        ax2.set_title('Thresholded Magnitude', fontsize=20)
+        ax2.set_title('Processed Image', fontsize=20)
         plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
         plt.show()

@@ -114,7 +114,7 @@ class ImageTransform:
         
         destinationPoints = self.GetDestinationPoints(imageHeight, imageWidth, widthLeftCorrection=384, widthRightCorrection =896)
         sourcePoints = self.GetSourcePoints(imageHeight, imageWidth, bottomWidthLeftCorrection=384, bottomWidthRightCorrection= 896,  
-                                            topLeftWidthCorrection=581, topRightWidthCorrection = 699, heightCorrection=477)
+                                            topLeftWidthCorrection=607, topRightWidthCorrection = 670, heightCorrection=450)
         
         if(printPolyLines):
             undistortedImage = cv2.polylines(undistortedImage,[sourcePoints.astype(np.int32)],True,(0,0,255), 4)
